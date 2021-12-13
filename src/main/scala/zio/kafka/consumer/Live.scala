@@ -152,11 +152,13 @@ private final case class Live(
   override def subscribe(subscription: Subscription): Task[Unit] =
     ZIO.runtime[Any].flatMap { runtime =>
       consumer.withConsumerM { c =>
+        val rc = RebalanceConsumer.Live(c)
+
         subscription match {
           case Subscription.Pattern(pattern) =>
-            ZIO(c.subscribe(pattern.pattern, runloop.rebalanceListener.toKafka(runtime)))
+            ZIO(c.subscribe(pattern.pattern, runloop.rebalanceListener.toKafka(runtime, rc)))
           case Subscription.Topics(topics) =>
-            ZIO(c.subscribe(topics.asJava, runloop.rebalanceListener.toKafka(runtime)))
+            ZIO(c.subscribe(topics.asJava, runloop.rebalanceListener.toKafka(runtime, rc)))
 
           // For manual subscriptions we have to do some manual work before starting the run loop
           case Subscription.Manual(topicPartitions) =>

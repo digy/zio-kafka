@@ -7,6 +7,7 @@ import zio.kafka.consumer.{ CommittableRecord, OffsetRetrieval }
 import zio.kafka.consumer.diagnostics.{ DiagnosticEvent, Diagnostics }
 import zio.kafka.consumer.internal.ConsumerAccess.ByteArrayKafkaConsumer
 import zio.kafka.consumer.internal.Runloop.{ ByteArrayCommittableRecord, ByteArrayConsumerRecord, Command }
+import zio.kafka.consumer.RebalanceListener
 import zio.stream._
 
 import java.util
@@ -24,7 +25,8 @@ private[consumer] final class Runloop(
   rebalancingRef: Ref[Boolean],
   diagnostics: Diagnostics,
   shutdownRef: Ref[Boolean],
-  offsetRetrieval: OffsetRetrieval
+  offsetRetrieval: OffsetRetrieval,
+  userRebalanceListener: RebalanceListener
 ) {
   private val isRebalancing = rebalancingRef.get
   private val isShutdown    = shutdownRef.get
@@ -52,16 +54,16 @@ private[consumer] final class Runloop(
 
   val rebalanceListener: RebalanceListener = {
     val trackRebalancing = RebalanceListener(
-      onAssigned = _ => rebalancingRef.set(false),
-      onRevoked = _ => rebalancingRef.set(true)
+      onAssigned = (_, _) => rebalancingRef.set(false),
+      onRevoked = (_, _) => rebalancingRef.set(true)
     )
 
     val emitDiagnostics = RebalanceListener(
-      assigned => diagnostics.emitIfEnabled(DiagnosticEvent.Rebalance.Assigned(assigned)),
-      revoked => diagnostics.emitIfEnabled(DiagnosticEvent.Rebalance.Revoked(revoked))
+      (assigned, _) => diagnostics.emitIfEnabled(DiagnosticEvent.Rebalance.Assigned(assigned)),
+      (revoked, _) => diagnostics.emitIfEnabled(DiagnosticEvent.Rebalance.Revoked(revoked))
     )
 
-    trackRebalancing ++ emitDiagnostics
+    trackRebalancing ++ emitDiagnostics ++ userRebalanceListener
   }
 
   private def commit(offsets: Map[TopicPartition, Long]): Task[Unit] =
@@ -443,7 +445,8 @@ private[consumer] object Runloop {
     pollFrequency: Duration,
     pollTimeout: Duration,
     diagnostics: Diagnostics,
-    offsetRetrieval: OffsetRetrieval
+    offsetRetrieval: OffsetRetrieval,
+    userRebalanceListener: RebalanceListener
   ): RManaged[Clock, Runloop] =
     for {
       rebalancingRef <- Ref.make(false).toManaged
@@ -475,7 +478,8 @@ private[consumer] object Runloop {
                   rebalancingRef,
                   diagnostics,
                   shutdownRef,
-                  offsetRetrieval
+                  offsetRetrieval,
+                  userRebalanceListener
                 )
       _ <- runloop.run
     } yield runloop
