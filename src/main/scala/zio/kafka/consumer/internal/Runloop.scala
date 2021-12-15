@@ -7,7 +7,7 @@ import zio._
 import zio.blocking.Blocking
 import zio.clock.Clock
 import zio.duration._
-import zio.kafka.consumer.Consumer.OffsetRetrieval
+import zio.kafka.consumer.OffsetRetrieval
 import zio.kafka.consumer.diagnostics.{ DiagnosticEvent, Diagnostics }
 import zio.kafka.consumer.CommittableRecord
 import zio.kafka.consumer.internal.ConsumerAccess.ByteArrayKafkaConsumer
