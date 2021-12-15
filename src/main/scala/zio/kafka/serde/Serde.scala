@@ -4,7 +4,6 @@ import org.apache.kafka.common.serialization.{ Serde => KafkaSerde }
 import org.apache.kafka.common.header.Headers
 
 import zio.{ RIO, Task }
-import zio.blocking.Blocking
 
 import scala.util.Try
 import scala.jdk.CollectionConverters._
@@ -15,30 +14,30 @@ import scala.jdk.CollectionConverters._
  * @tparam T
  *   Value type
  */
-trait Serde[-R, T] extends Deserializer[T] with Serializer[R, T] {
+trait Serde[T] extends Deserializer[T] with Serializer[T] {
 
   /**
    * Creates a new Serde that uses optional values. Null data will be mapped to None values.
    */
-  def asOption(implicit ev: T <:< AnyRef, ev2: Null <:< T): Serde[R, Option[T]] =
+  def asOption(implicit ev: T <:< AnyRef, ev2: Null <:< T): Serde[Option[T]] =
     Serde(super[Deserializer].asOption)(super[Serializer].asOption)
 
   /**
    * Creates a new Serde that executes its serialization and deserialization functions on the blocking threadpool.
    */
-  override def blocking: Serde[R with Blocking, T] =
+  override def blocking: Serde[T] =
     Serde(super[Deserializer].blocking)(super[Serializer].blocking)
 
   /**
    * Converts to a Serde of type U with pure transformations
    */
-  def inmap[U](f: T => U)(g: U => T): Serde[R, U] =
+  def inmap[U](f: T => U)(g: U => T): Serde[U] =
     Serde(map(f))(contramap(g))
 
   /**
    * Convert to a Serde of type U with effectful transformations
    */
-  def inmapM[R1 <: R, U](f: T => RIO[R1, U])(g: U => RIO[R1, T]): Serde[R1, U] =
+  def inmapM[R1, U](f: T => Task[U])(g: U => RIO[R1, T]): Serde[U] =
     Serde(mapM(f))(contramapM(g))
 }
 
@@ -49,23 +48,23 @@ object Serde extends Serdes {
    *
    * The (de)serializer functions can returned a failure ZIO with a Throwable to indicate (de)serialization failure
    */
-  def apply[R, T](
-    deser: (String, Headers, Array[Byte]) => RIO[R, T]
-  )(ser: (String, Headers, T) => RIO[R, Array[Byte]]): Serde[R, T] =
-    new Serde[R, T] {
-      override def serialize(topic: String, headers: Headers, value: T): RIO[R, Array[Byte]] =
+  def apply[T](
+    deser: (String, Headers, Array[Byte]) => Task[T]
+  )(ser: (String, Headers, T) => Task[Array[Byte]]): Serde[T] =
+    new Serde[T] {
+      override def serialize(topic: String, headers: Headers, value: T): Task[Array[Byte]] =
         ser(topic, headers, value)
-      override def deserialize(topic: String, headers: Headers, data: Array[Byte]): RIO[R, T] =
+      override def deserialize(topic: String, headers: Headers, data: Array[Byte]): Task[T] =
         deser(topic, headers, data)
     }
 
   /**
    * Create a Serde from a deserializer and serializer function
    */
-  def apply[R, T](deser: Deserializer[T])(ser: Serializer[R, T]): Serde[R, T] = new Serde[R, T] {
-    override def serialize(topic: String, headers: Headers, value: T): RIO[R, Array[Byte]] =
+  def apply[T](deser: Deserializer[T])(ser: Serializer[T]): Serde[T] = new Serde[T] {
+    override def serialize(topic: String, headers: Headers, value: T): Task[Array[Byte]] =
       ser.serialize(topic, headers, value)
-    override def deserialize(topic: String, headers: Headers, data: Array[Byte]): RIO[R, T] =
+    override def deserialize(topic: String, headers: Headers, data: Array[Byte]): Task[T] =
       deser.deserialize(topic, headers, data)
   }
 
@@ -75,7 +74,7 @@ object Serde extends Serdes {
   def fromKafkaSerde[T](serde: KafkaSerde[T], props: Map[String, AnyRef], isKey: Boolean) =
     Task(serde.configure(props.asJava, isKey))
       .as(
-        new Serde[Any, T] {
+        new Serde[T] {
           val serializer   = serde.serializer()
           val deserializer = serde.deserializer()
 
