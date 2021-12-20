@@ -63,7 +63,7 @@ final case class ConsumerSettings(
 }
 
 object ConsumerSettings {
-  def apply(bootstrapServers: List[String]): ConsumerSettings =
+  def default(bootstrapServers: List[String]): ConsumerSettings =
     new ConsumerSettings(
       bootstrapServers = bootstrapServers,
       properties = Map(),
