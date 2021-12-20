@@ -26,7 +26,7 @@ final case class Offset(
   consumerGroupMetadata: Option[ConsumerGroupMetadata]
 ) {
   def commit: Task[Unit] = commitHandle(Map(topicPartition -> offset))
-  def batch: OffsetBatch = OffsetBatchImpl(Map(topicPartition -> offset), commitHandle, consumerGroupMetadata)
+  def batch: OffsetBatch = OffsetBatch(Map(topicPartition -> offset), commitHandle, consumerGroupMetadata)
 
   /**
    * Attempts to commit and retries according to the given policy when the commit fails with a
