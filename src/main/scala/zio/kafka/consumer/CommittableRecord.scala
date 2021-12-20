@@ -43,7 +43,7 @@ object CommittableRecord {
   ): CommittableRecord[K, V] =
     CommittableRecord(
       record,
-      OffsetImpl(
+      Offset(
         new TopicPartition(record.topic(), record.partition()),
         record.offset(),
         commitHandle,
