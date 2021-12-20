@@ -2,35 +2,24 @@ package zio.kafka.consumer
 
 import org.apache.kafka.clients.consumer.ConsumerGroupMetadata
 import org.apache.kafka.common.TopicPartition
-import zio.{ RIO, Schedule, Task }
-import zio.clock.Clock
+import zio.Task
 
-sealed trait OffsetBatch {
-  def offsets: Map[TopicPartition, Long]
-  def commit: Task[Unit]
-  def merge(offset: Offset): OffsetBatch
-  def merge(offsets: OffsetBatch): OffsetBatch
-  def consumerGroupMetadata: Option[ConsumerGroupMetadata]
-
-  /**
-   * Attempts to commit and retries according to the given policy when the commit fails with a
-   * RetriableCommitFailedException
-   */
-  def commitOrRetry[R](policy: Schedule[R, Throwable, Any]): RIO[R with Clock, Unit] =
-    Offset.commitOrRetry(commit, policy)
-}
 
 object OffsetBatch {
-  val empty: OffsetBatch = EmptyOffsetBatch
+  val empty: OffsetBatch = OffsetBatch(
+    offsets               = Map(),
+    commitHandle          = Map(),
+    consumerGroupMetadata = None
+  )
 
   def apply(offsets: Iterable[Offset]): OffsetBatch = offsets.foldLeft(empty)(_ merge _)
 }
 
-private final case class OffsetBatchImpl(
+final case class OffsetBatch(
   offsets: Map[TopicPartition, Long],
   commitHandle: Map[TopicPartition, Long] => Task[Unit],
   consumerGroupMetadata: Option[ConsumerGroupMetadata]
-) extends OffsetBatch {
+) {
   def commit: Task[Unit] = commitHandle(offsets)
 
   def merge(offset: Offset): OffsetBatch =
@@ -50,12 +39,4 @@ private final case class OffsetBatchImpl(
 
     copy(offsets = newOffsets.result())
   }
-}
-
-case object EmptyOffsetBatch extends OffsetBatch {
-  val offsets: Map[TopicPartition, Long]                   = Map()
-  val commit: Task[Unit]                                   = Task.unit
-  def merge(offset: Offset): OffsetBatch                   = offset.batch
-  def merge(offsets: OffsetBatch): OffsetBatch             = offsets
-  def consumerGroupMetadata: Option[ConsumerGroupMetadata] = None
 }
