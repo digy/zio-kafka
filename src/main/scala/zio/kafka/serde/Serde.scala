@@ -15,7 +15,7 @@ import scala.jdk.CollectionConverters._
  * @tparam T
  *   Value type
  */
-trait Serde[-R, T] extends Deserializer[T] with Serializer[R, T] {
+trait Serde[-R, T] extends Deserializer[T] with Serializer[T] {
 
   /**
    * Creates a new Serde that uses optional values. Null data will be mapped to None values.
@@ -50,20 +50,20 @@ object Serde extends Serdes {
    * The (de)serializer functions can returned a failure ZIO with a Throwable to indicate (de)serialization failure
    */
   def apply[R, T](
-    deser: (String, Headers, Array[Byte]) => RIO[R, T]
-  )(ser: (String, Headers, T) => RIO[R, Array[Byte]]): Serde[R, T] =
+    deser: (String, Headers, Array[Byte]) => Task[T]
+  )(ser: (String, Headers, T) => Task[Array[Byte]]): Serde[R, T] =
     new Serde[R, T] {
-      override def serialize(topic: String, headers: Headers, value: T): RIO[R, Array[Byte]] =
+      override def serialize(topic: String, headers: Headers, value: T): Task[Array[Byte]] =
         ser(topic, headers, value)
-      override def deserialize(topic: String, headers: Headers, data: Array[Byte]): RIO[R, T] =
+      override def deserialize(topic: String, headers: Headers, data: Array[Byte]): Task[T] =
         deser(topic, headers, data)
     }
 
   /**
    * Create a Serde from a deserializer and serializer function
    */
-  def apply[R, T](deser: Deserializer[T])(ser: Serializer[R, T]): Serde[R, T] = new Serde[R, T] {
-    override def serialize(topic: String, headers: Headers, value: T): RIO[R, Array[Byte]] =
+  def apply[R, T](deser: Deserializer[T])(ser: Serializer[T]): Serde[R, T] = new Serde[R, T] {
+    override def serialize(topic: String, headers: Headers, value: T): Task[Array[Byte]] =
       ser.serialize(topic, headers, value)
     override def deserialize(topic: String, headers: Headers, data: Array[Byte]): Task[T] =
       deser.deserialize(topic, headers, data)
