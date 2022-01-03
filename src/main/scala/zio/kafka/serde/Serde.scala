@@ -12,12 +12,10 @@ import scala.jdk.CollectionConverters._
 /**
  * A serializer and deserializer for values of type T
  *
- * @tparam R
- *   Environment available to the deserializer
  * @tparam T
  *   Value type
  */
-trait Serde[-R, T] extends Deserializer[R, T] with Serializer[R, T] {
+trait Serde[-R, T] extends Deserializer[T] with Serializer[R, T] {
 
   /**
    * Creates a new Serde that uses optional values. Null data will be mapped to None values.
@@ -64,10 +62,10 @@ object Serde extends Serdes {
   /**
    * Create a Serde from a deserializer and serializer function
    */
-  def apply[R, T](deser: Deserializer[R, T])(ser: Serializer[R, T]): Serde[R, T] = new Serde[R, T] {
+  def apply[R, T](deser: Deserializer[T])(ser: Serializer[R, T]): Serde[R, T] = new Serde[R, T] {
     override def serialize(topic: String, headers: Headers, value: T): RIO[R, Array[Byte]] =
       ser.serialize(topic, headers, value)
-    override def deserialize(topic: String, headers: Headers, data: Array[Byte]): RIO[R, T] =
+    override def deserialize(topic: String, headers: Headers, data: Array[Byte]): Task[T] =
       deser.deserialize(topic, headers, data)
   }
 
@@ -89,6 +87,6 @@ object Serde extends Serdes {
         }
       )
 
-  implicit def deserializerWithError[R, T](implicit deser: Deserializer[R, T]): Deserializer[R, Try[T]] =
+  implicit def deserializerWithError[R, T](implicit deser: Deserializer[T]): Deserializer[Try[T]] =
     deser.asTry
 }

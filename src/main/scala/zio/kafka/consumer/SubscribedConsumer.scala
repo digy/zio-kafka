@@ -2,24 +2,25 @@ package zio.kafka.consumer
 
 import org.apache.kafka.common.TopicPartition
 import zio.{ Has, RIO, Task }
-import zio.stream.{ Stream, ZStream }
+import zio.stream.ZStream
 import zio.kafka.serde.Deserializer
 
 class SubscribedConsumer(
   private val underlying: Task[Consumer]
 ) {
 
-  def partitionedStream[R, K, V](keyDeserializer: Deserializer[R, K], valueDeserializer: Deserializer[R, V]): Stream[
+  def partitionedStream[K, V](keyDeserializer: Deserializer[K], valueDeserializer: Deserializer[V]): ZStream[
+    Any,
     Throwable,
-    (TopicPartition, ZStream[R, Throwable, CommittableRecord[K, V]])
+    (TopicPartition, ZStream[Any, Throwable, CommittableRecord[K, V]])
   ] =
     ZStream.fromEffect(underlying).flatMap(_.partitionedStream(keyDeserializer, valueDeserializer))
 
-  def plainStream[R, K, V](
-    keyDeserializer: Deserializer[R, K],
-    valueDeserializer: Deserializer[R, V],
+  def plainStream[K, V](
+    keyDeserializer: Deserializer[K],
+    valueDeserializer: Deserializer[V],
     outputBuffer: Int = 4
-  ): ZStream[R, Throwable, CommittableRecord[K, V]] =
+  ): ZStream[Any, Throwable, CommittableRecord[K, V]] =
     partitionedStream(keyDeserializer, valueDeserializer).flatMapPar(n = Int.MaxValue, outputBuffer = outputBuffer)(
       _._2
     )
@@ -29,18 +30,18 @@ class SubscribedConsumerFromEnvironment(
   private val underlying: RIO[Has[Consumer], Consumer]
 ) {
 
-  def partitionedStream[R, K, V](keyDeserializer: Deserializer[R, K], valueDeserializer: Deserializer[R, V]): ZStream[
+  def partitionedStream[K, V](keyDeserializer: Deserializer[K], valueDeserializer: Deserializer[V]): ZStream[
     Has[Consumer],
     Throwable,
-    (TopicPartition, ZStream[R, Throwable, CommittableRecord[K, V]])
+    (TopicPartition, ZStream[Any, Throwable, CommittableRecord[K, V]])
   ] =
     ZStream.fromEffect(underlying).flatMap(_.partitionedStream(keyDeserializer, valueDeserializer))
 
-  def plainStream[R, K, V](
-    keyDeserializer: Deserializer[R, K],
-    valueDeserializer: Deserializer[R, V],
+  def plainStream[K, V](
+    keyDeserializer: Deserializer[K],
+    valueDeserializer: Deserializer[V],
     outputBuffer: Int = 4
-  ): ZStream[R with Has[Consumer], Throwable, CommittableRecord[K, V]] =
+  ): ZStream[Has[Consumer], Throwable, CommittableRecord[K, V]] =
     partitionedStream(keyDeserializer, valueDeserializer).flatMapPar(n = Int.MaxValue, outputBuffer = outputBuffer)(
       _._2
     )

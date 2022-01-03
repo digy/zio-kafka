@@ -3,7 +3,7 @@ package zio.kafka.serde
 import org.apache.kafka.common.header.Headers
 import org.apache.kafka.common.serialization.{ Deserializer => KafkaDeserializer }
 import zio.{ RIO, Task, ZIO }
-import zio.blocking.{ blocking => zioBlocking, Blocking }
+import zio.blocking.{ blocking => zioBlocking }
 
 import scala.util.{ Failure, Success, Try }
 import scala.jdk.CollectionConverters._
@@ -12,36 +12,34 @@ import scala.annotation.nowarn
 /**
  * Deserializer from byte array to a value of some type T
  *
- * @tparam R
- *   Environment available to the deserializer
  * @tparam T
  *   Value type
  */
-trait Deserializer[-R, +T] {
-  def deserialize(topic: String, headers: Headers, data: Array[Byte]): RIO[R, T]
+trait Deserializer[+T] {
+  def deserialize(topic: String, headers: Headers, data: Array[Byte]): Task[T]
 
   /**
    * Returns a new deserializer that executes its deserialization function on the blocking threadpool.
    */
-  def blocking: Deserializer[R with Blocking, T] =
+  def blocking: Deserializer[T] =
     Deserializer((topic, headers, data) => zioBlocking(deserialize(topic, headers, data)))
 
   /**
    * Create a deserializer for a type U based on the deserializer for type T and a mapping function
    */
-  def map[U](f: T => U): Deserializer[R, U] = Deserializer(deserialize(_, _, _).map(f))
+  def map[U](f: T => U): Deserializer[U] = Deserializer(deserialize(_, _, _).map(f))
 
   /**
    * Create a deserializer for a type U based on the deserializer for type T and an effectful mapping function
    */
-  def mapM[R1 <: R, U](f: T => RIO[R1, U]): Deserializer[R1, U] = Deserializer(deserialize(_, _, _).flatMap(f))
+  def mapM[R, U](f: T => RIO[R, U]): Deserializer[U] = Deserializer(deserialize(_, _, _).flatMap(f))
 
   /**
    * When this serializer fails, attempt to deserialize with the alternative
    *
    * If both deserializers fail, the error will be the last deserializer's exception.
    */
-  def orElse[R1 <: R, U >: T](alternative: Deserializer[R1, U]): Deserializer[R1, U] =
+  def orElse[U >: T](alternative: Deserializer[U]): Deserializer[U] =
     Deserializer { (topic, headers, data) =>
       deserialize(topic, headers, data) orElse alternative.deserialize(topic, headers, data)
     }
@@ -51,13 +49,13 @@ trait Deserializer[-R, +T] {
    *
    * This is useful for explicitly handling deserialization failures.
    */
-  def asTry: Deserializer[R, Try[T]] =
+  def asTry: Deserializer[Try[T]] =
     Deserializer(deserialize(_, _, _).fold(e => Failure(e), v => Success(v)))
 
   /**
    * Returns a new deserializer that deserializes values as Option values, mapping null data to None values.
    */
-  def asOption(implicit @nowarn ev: T <:< AnyRef): Deserializer[R, Option[T]] =
+  def asOption(implicit @nowarn ev: T <:< AnyRef): Deserializer[Option[T]] =
     Deserializer((topic, headers, data) => ZIO.foreach(Option(data))(deserialize(topic, headers, _)))
 }
 
@@ -66,8 +64,8 @@ object Deserializer extends Serdes {
   /**
    * Create a deserializer from a function
    */
-  def apply[R, T](deser: (String, Headers, Array[Byte]) => RIO[R, T]): Deserializer[R, T] = new Deserializer[R, T] {
-    override def deserialize(topic: String, headers: Headers, data: Array[Byte]): RIO[R, T] =
+  def apply[T](deser: (String, Headers, Array[Byte]) => Task[T]): Deserializer[T] = new Deserializer[T] {
+    override def deserialize(topic: String, headers: Headers, data: Array[Byte]): Task[T] =
       deser(topic, headers, data)
   }
 
@@ -78,10 +76,10 @@ object Deserializer extends Serdes {
     deserializer: KafkaDeserializer[T],
     props: Map[String, AnyRef],
     isKey: Boolean
-  ): Task[Deserializer[Any, T]] =
+  ): Task[Deserializer[T]] =
     Task(deserializer.configure(props.asJava, isKey))
       .as(
-        new Deserializer[Any, T] {
+        new Deserializer[T] {
           override def deserialize(topic: String, headers: Headers, data: Array[Byte]): Task[T] =
             Task(deserializer.deserialize(topic, headers, data))
         }
