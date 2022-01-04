@@ -1,19 +1,18 @@
 package zio.kafka.consumer.internal
 
-import java.util
 import org.apache.kafka.clients.consumer._
 import org.apache.kafka.common.TopicPartition
 import zio._
 import zio.blocking.Blocking
 import zio.clock.Clock
 import zio.duration._
-import zio.kafka.consumer.Consumer.OffsetRetrieval
+import zio.kafka.consumer.{ CommittableRecord, OffsetRetrieval }
 import zio.kafka.consumer.diagnostics.{ DiagnosticEvent, Diagnostics }
-import zio.kafka.consumer.CommittableRecord
 import zio.kafka.consumer.internal.ConsumerAccess.ByteArrayKafkaConsumer
 import zio.kafka.consumer.internal.Runloop.{ ByteArrayCommittableRecord, ByteArrayConsumerRecord, Command }
 import zio.stream._
 
+import java.util
 import scala.collection.mutable
 import scala.jdk.CollectionConverters._
 import scala.util.Try

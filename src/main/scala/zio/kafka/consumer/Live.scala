@@ -5,7 +5,7 @@ import org.apache.kafka.common.{ Metric, MetricName, PartitionInfo, TopicPartiti
 import zio._
 import zio.clock.Clock
 import zio.duration._
-import zio.kafka.consumer.Consumer.{ offsetBatches, OffsetRetrieval }
+import zio.kafka.consumer.Consumer.offsetBatches
 import zio.kafka.serde.Deserializer
 import zio.kafka.consumer.internal.{ ConsumerAccess, Runloop }
 import zio.stream._

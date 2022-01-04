@@ -357,11 +357,4 @@ object Consumer {
   def metrics: RIO[Has[Consumer], Map[MetricName, Metric]] =
     ZIO.serviceWith(_.metrics)
 
-  sealed trait OffsetRetrieval
-
-  object OffsetRetrieval {
-    final case class Auto(reset: AutoOffsetStrategy = AutoOffsetStrategy.Latest)                extends OffsetRetrieval
-    final case class Manual(getOffsets: Set[TopicPartition] => Task[Map[TopicPartition, Long]]) extends OffsetRetrieval
-  }
-
 }
