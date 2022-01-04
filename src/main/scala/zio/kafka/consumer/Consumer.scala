@@ -136,7 +136,7 @@ object Consumer {
   val offsetBatches: ZTransducer[Any, Nothing, Offset, OffsetBatch] =
     ZTransducer.foldLeft[Offset, OffsetBatch](OffsetBatch.empty)(_ merge _)
 
-  def live: RLayer[Clock with Blocking with Has[ConsumerSettings] with Has[Diagnostics], Has[Consumer]] =
+  val live: RLayer[Clock with Blocking with Has[ConsumerSettings] with Has[Diagnostics], Has[Consumer]] =
     (for {
       settings    <- ZManaged.service[ConsumerSettings]
       diagnostics <- ZManaged.service[Diagnostics]
