@@ -3,7 +3,7 @@ package zio.kafka.consumer
 import org.apache.kafka.clients.consumer.ConsumerConfig
 import zio.duration._
 
-case class ConsumerSettings(
+final case class ConsumerSettings(
   bootstrapServers: List[String],
   properties: Map[String, AnyRef],
   closeTimeout: Duration,
