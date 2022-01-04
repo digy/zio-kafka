@@ -1,10 +1,10 @@
 package zio.kafka.producer
 
-import org.apache.kafka.clients.producer.{ProducerRecord, RecordMetadata}
-import zio.kafka.consumer.{Offset, OffsetBatch}
-import zio.kafka.producer.TransactionalProducer.{TransactionLeaked, UserInitiatedAbort}
+import org.apache.kafka.clients.producer.{ ProducerRecord, RecordMetadata }
+import zio.kafka.consumer.{ Offset, OffsetBatch }
+import zio.kafka.producer.TransactionalProducer.{ TransactionLeaked, UserInitiatedAbort }
 import zio.kafka.serde.Serializer
-import zio.{Chunk, IO, Ref, Task, UIO, ZIO}
+import zio.{ Chunk, IO, Ref, Task, UIO, ZIO }
 
 trait Transaction {
   def produce[K, V](
