@@ -364,17 +364,4 @@ object Consumer {
     final case class Manual(getOffsets: Set[TopicPartition] => Task[Map[TopicPartition, Long]]) extends OffsetRetrieval
   }
 
-  sealed trait AutoOffsetStrategy { self =>
-    def toConfig: String = self match {
-      case AutoOffsetStrategy.Earliest => "earliest"
-      case AutoOffsetStrategy.Latest   => "latest"
-      case AutoOffsetStrategy.None     => "none"
-    }
-  }
-
-  object AutoOffsetStrategy {
-    case object Earliest extends AutoOffsetStrategy
-    case object Latest   extends AutoOffsetStrategy
-    case object None     extends AutoOffsetStrategy
-  }
 }
