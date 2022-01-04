@@ -5,7 +5,7 @@ import zio.duration._
 
 final case class ConsumerSettings(
   bootstrapServers: List[String],
-  properties: Map[String, AnyRef],
+  properties: Map[String, String],
   closeTimeout: Duration,
   pollInterval: Duration,
   pollTimeout: Duration,
@@ -50,13 +50,13 @@ final case class ConsumerSettings(
   def withPollTimeout(timeout: Duration): ConsumerSettings =
     copy(pollTimeout = timeout)
 
-  def withProperty(key: String, value: AnyRef): ConsumerSettings =
+  def withProperty(key: String, value: String): ConsumerSettings =
     copy(properties = properties + (key -> value))
 
-  def withProperties(kvs: (String, AnyRef)*): ConsumerSettings =
+  def withProperties(kvs: (String, String)*): ConsumerSettings =
     withProperties(kvs.toMap)
 
-  def withProperties(kvs: Map[String, AnyRef]): ConsumerSettings =
+  def withProperties(kvs: Map[String, String]): ConsumerSettings =
     copy(properties = properties ++ kvs)
 }
 
