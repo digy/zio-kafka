@@ -1,7 +1,7 @@
 package zio.kafka.serde
 
-import zio.{ RIO, Task }
-import zio.blocking.{ blocking => zioBlocking }
+import zio.{ Has, Task }
+import zio.blocking.{ blocking => zioBlocking, Blocking }
 import org.apache.kafka.common.header.Headers
 import org.apache.kafka.common.serialization.{ Serializer => KafkaSerializer }
 
@@ -24,14 +24,14 @@ trait Serializer[-T] {
   /**
    * Create a serializer for a type U based on the serializer for type T and an effectful mapping function
    */
-  def contramapM[R1, U](f: U => RIO[R1, T]): Serializer[U] =
+  def contramapM[U](f: U => Task[T]): Serializer[U] =
     Serializer((topic, headers, u) => f(u).flatMap(serialize(topic, headers, _)))
 
   /**
    * Returns a new serializer that executes its serialization function on the blocking threadpool.
    */
   def blocking: Serializer[T] =
-    Serializer((topic, headers, t) => zioBlocking(serialize(topic, headers, t)))
+    Serializer((topic, headers, t) => zioBlocking(serialize(topic, headers, t)).provide(Has(Blocking.Service.live)))
 
   /**
    * Returns a new serializer that handles optional values and serializes them as nulls.

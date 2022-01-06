@@ -37,7 +37,7 @@ trait Serde[T] extends Deserializer[T] with Serializer[T] {
   /**
    * Convert to a Serde of type U with effectful transformations
    */
-  def inmapM[R1, U](f: T => Task[U])(g: U => Task[T]): Serde[U] =
+  def inmapM[U](f: T => Task[U])(g: U => Task[T]): Serde[U] =
     Serde(mapM(f))(contramapM(g))
 }
 

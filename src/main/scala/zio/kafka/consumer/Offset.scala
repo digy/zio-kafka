@@ -8,9 +8,9 @@ import zio.clock.Clock
 object Offset {
 
   private[consumer] def commitOrRetry[R, B](
-                                             commit: Task[Unit],
-                                             policy: Schedule[R, Throwable, B]
-                                           ): RIO[R with Clock, Unit] =
+    commit: Task[Unit],
+    policy: Schedule[R, Throwable, B]
+  ): RIO[R with Clock, Unit] =
     commit.retry(
       Schedule.recurWhile[Throwable] {
         case _: RetriableCommitFailedException => true
