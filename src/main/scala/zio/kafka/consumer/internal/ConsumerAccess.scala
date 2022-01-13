@@ -22,7 +22,6 @@ private[consumer] class ConsumerAccess(
   private[consumer] def withConsumerNoPermit[R, A](
     f: ByteArrayKafkaConsumer => RIO[R, A]
   ): RIO[R, A] =
-    //ZIO.blocking
     ZIO
       .blocking(ZIO.suspend(f(consumer)))
       .catchSome { case _: WakeupException =>
