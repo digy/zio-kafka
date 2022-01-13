@@ -4,7 +4,7 @@ import org.apache.kafka.clients.consumer.ConsumerGroupMetadata
 import org.apache.kafka.common.TopicPartition
 import zio.Task
 import zio.{ RIO, Schedule }
-import zio.clock.Clock
+import zio.Clock
 
 object OffsetBatch {
   val empty: OffsetBatch = OffsetBatch(

@@ -2,8 +2,7 @@ package zio.kafka.serde
 
 import org.apache.kafka.common.header.Headers
 import org.apache.kafka.common.serialization.{ Deserializer => KafkaDeserializer }
-import zio.{ Has, Task, ZIO }
-import zio.blocking.{ blocking => zioBlocking, Blocking }
+import zio.{ Task, ZIO }
 
 import scala.util.{ Failure, Success, Try }
 import scala.jdk.CollectionConverters._
@@ -21,10 +20,7 @@ trait Deserializer[+T] {
    * Returns a new deserializer that executes its deserialization function on the blocking threadpool.
    */
   def blocking: Deserializer[T] =
-    Deserializer((topic, headers, data) =>
-      zioBlocking(deserialize(topic, headers, data)).provide(Has(Blocking.Service.live))
-    )
-  //Deserializer((topic, headers, data) => ZIO.blocking(deserialize(topic, headers, data)))
+    Deserializer((topic, headers, data) => ZIO.attemptBlocking(deserialize(topic, headers, data)))
 
   /**
    * Create a deserializer for a type U based on the deserializer for type T and a mapping function

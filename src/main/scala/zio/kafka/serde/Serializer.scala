@@ -1,7 +1,6 @@
 package zio.kafka.serde
 
-import zio.{ Has, Task }
-import zio.blocking.{ blocking => zioBlocking, Blocking }
+import zio.{ Task, ZIO }
 import org.apache.kafka.common.header.Headers
 import org.apache.kafka.common.serialization.{ Serializer => KafkaSerializer }
 
@@ -31,7 +30,7 @@ trait Serializer[-T] {
    * Returns a new serializer that executes its serialization function on the blocking threadpool.
    */
   def blocking: Serializer[T] =
-    Serializer((topic, headers, t) => zioBlocking(serialize(topic, headers, t)).provide(Has(Blocking.Service.live)))
+    Serializer((topic, headers, t) => ZIO.attemptBlocking(serialize(topic, headers, t)))
 
   /**
    * Returns a new serializer that handles optional values and serializes them as nulls.

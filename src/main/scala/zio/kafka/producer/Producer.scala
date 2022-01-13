@@ -6,7 +6,6 @@ import org.apache.kafka.clients.producer.{ Callback, KafkaProducer, ProducerReco
 import org.apache.kafka.common.{ Metric, MetricName }
 import org.apache.kafka.common.serialization.ByteArraySerializer
 import zio._
-import zio.blocking._
 import zio.kafka.serde.Serializer
 import zio.stream.ZTransducer
 
@@ -124,8 +123,7 @@ object Producer {
 
   private[producer] final case class Live(
     p: KafkaProducer[Array[Byte], Array[Byte]],
-    producerSettings: ProducerSettings,
-    blocking: Blocking.Service
+    producerSettings: ProducerSettings
   ) extends Producer {
 
     override def produceAsync[K, V](
@@ -137,7 +135,7 @@ object Producer {
         done             <- Promise.make[Throwable, RecordMetadata]
         serializedRecord <- serialize(record, keySerializer, valueSerializer)
         runtime          <- ZIO.runtime[Any]
-        _ <- blocking.effectBlocking {
+        _ <- ZIO.attemptBlocking {
                p.send(
                  serializedRecord,
                  new Callback {
@@ -163,7 +161,7 @@ object Producer {
           done              <- Promise.make[Throwable, Chunk[RecordMetadata]]
           runtime           <- ZIO.runtime[Any]
           serializedRecords <- ZIO.foreach(records.toSeq)(serialize(_, keySerializer, valueSerializer))
-          _ <- blocking.effectBlocking {
+          _ <- ZIO.attemptBlocking {
                  val it: Iterator[(ByteRecord, Int)] =
                    serializedRecords.iterator.zipWithIndex
                  val res: Array[RecordMetadata] = new Array[RecordMetadata](records.length)
@@ -224,9 +222,9 @@ object Producer {
     ): Task[Chunk[RecordMetadata]] =
       produceChunkAsync(records, keySerializer, valueSerializer).flatten
 
-    override def flush: Task[Unit] = blocking.effectBlocking(p.flush())
+    override def flush: Task[Unit] = ZIO.attemptBlocking(p.flush())
 
-    override def metrics: Task[Map[MetricName, Metric]] = blocking.effectBlocking(p.metrics().asScala.toMap)
+    override def metrics: Task[Map[MetricName, Metric]] = ZIO.attemptBlocking(p.metrics().asScala.toMap)
 
     private def serialize[K, V](
       r: ProducerRecord[K, V],
@@ -241,29 +239,28 @@ object Producer {
     private[producer] def close: UIO[Unit] = UIO(p.close(producerSettings.closeTimeout))
   }
 
-  val live: RLayer[Has[ProducerSettings] with Blocking, Has[Producer]] =
+  val live: RLayer[ProducerSettings, Producer] =
     (for {
       settings <- ZManaged.service[ProducerSettings]
       producer <- make(settings)
     } yield producer).toLayer
 
-  def make(settings: ProducerSettings): RManaged[Blocking, Producer] =
+  def make(settings: ProducerSettings): TaskManaged[Producer] =
     (for {
-      props    <- ZIO.effect(settings.driverSettings)
-      blocking <- ZIO.service[Blocking.Service]
-      rawProducer <- ZIO.effect(
+      props <- ZIO.attempt(settings.driverSettings)
+      rawProducer <- ZIO.attempt(
                        new KafkaProducer[Array[Byte], Array[Byte]](
                          props.asJava,
                          new ByteArraySerializer(),
                          new ByteArraySerializer()
                        )
                      )
-    } yield Live(rawProducer, settings, blocking)).toManaged(_.close)
+    } yield Live(rawProducer, settings)).toManaged(_.close)
 
   def withProducerService[R, A](
     r: Producer => RIO[R, A]
-  ): RIO[R with Has[Producer], A] =
-    ZIO.accessM[R with Has[Producer]](env => r(env.get[Producer]))
+  ): RIO[R with Producer, A] =
+    ZIO.environmentWithZIO[R with Producer](env => r(env.get[Producer]))
 
   /**
    * Accessor method for [[Producer!.produce[R,K,V](record*]]
@@ -272,7 +269,7 @@ object Producer {
     record: ProducerRecord[K, V],
     keySerializer: Serializer[K],
     valueSerializer: Serializer[V]
-  ): RIO[Has[Producer], RecordMetadata] =
+  ): RIO[Producer, RecordMetadata] =
     withProducerService(_.produce(record, keySerializer, valueSerializer))
 
   /**
@@ -284,7 +281,7 @@ object Producer {
     value: V,
     keySerializer: Serializer[K],
     valueSerializer: Serializer[V]
-  ): RIO[Has[Producer], RecordMetadata] =
+  ): RIO[Producer, RecordMetadata] =
     withProducerService(_.produce(topic, key, value, keySerializer, valueSerializer))
 
   /**
@@ -293,7 +290,7 @@ object Producer {
   def produceAll[K, V](
     keySerializer: Serializer[K],
     valueSerializer: Serializer[V]
-  ): ZTransducer[Has[Producer], Throwable, ProducerRecord[K, V], RecordMetadata] =
+  ): ZTransducer[Producer, Throwable, ProducerRecord[K, V], RecordMetadata] =
     ZTransducer.fromPush {
       case None => UIO.succeed(Chunk.empty)
       case Some(chunk) =>
@@ -307,7 +304,7 @@ object Producer {
     record: ProducerRecord[K, V],
     keySerializer: Serializer[K],
     valueSerializer: Serializer[V]
-  ): RIO[Has[Producer], Task[RecordMetadata]] =
+  ): RIO[Producer, Task[RecordMetadata]] =
     withProducerService(_.produceAsync(record, keySerializer, valueSerializer))
 
   /**
@@ -319,7 +316,7 @@ object Producer {
     value: V,
     keySerializer: Serializer[K],
     valueSerializer: Serializer[V]
-  ): RIO[Has[Producer], Task[RecordMetadata]] =
+  ): RIO[Producer, Task[RecordMetadata]] =
     withProducerService(_.produceAsync(topic, key, value, keySerializer, valueSerializer))
 
   /**
@@ -329,7 +326,7 @@ object Producer {
     records: Chunk[ProducerRecord[K, V]],
     keySerializer: Serializer[K],
     valueSerializer: Serializer[V]
-  ): RIO[Has[Producer], Task[Chunk[RecordMetadata]]] =
+  ): RIO[Producer, Task[Chunk[RecordMetadata]]] =
     withProducerService(_.produceChunkAsync(records, keySerializer, valueSerializer))
 
   /**
@@ -339,18 +336,18 @@ object Producer {
     records: Chunk[ProducerRecord[K, V]],
     keySerializer: Serializer[K],
     valueSerializer: Serializer[V]
-  ): RIO[Has[Producer], Chunk[RecordMetadata]] =
+  ): RIO[Producer, Chunk[RecordMetadata]] =
     withProducerService(_.produceChunk(records, keySerializer, valueSerializer))
 
   /**
    * Accessor method for [[Producer.flush]]
    */
-  val flush: RIO[Has[Producer], Unit] =
+  val flush: RIO[Producer, Unit] =
     ZIO.serviceWith(_.flush)
 
   /**
    * Accessor method for [[Producer.metrics]]
    */
-  val metrics: RIO[Has[Producer], Map[MetricName, Metric]] =
+  val metrics: RIO[Producer, Map[MetricName, Metric]] =
     ZIO.serviceWith(_.metrics)
 }

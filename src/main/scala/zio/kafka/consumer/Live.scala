@@ -3,8 +3,6 @@ package zio.kafka.consumer
 import org.apache.kafka.clients.consumer.{ OffsetAndMetadata, OffsetAndTimestamp }
 import org.apache.kafka.common.{ Metric, MetricName, PartitionInfo, TopicPartition }
 import zio._
-import zio.clock.Clock
-import zio.duration._
 import zio.kafka.consumer.Consumer.offsetBatches
 import zio.kafka.serde.Deserializer
 import zio.kafka.consumer.internal.{ ConsumerAccess, Runloop }
@@ -16,7 +14,7 @@ private final case class Live(
   private val consumer: ConsumerAccess,
   private val settings: ConsumerSettings,
   private val runloop: Runloop,
-  private val clock: Clock.Service
+  private val clock: Clock
 ) extends Consumer {
 
   override def assignment: Task[Set[TopicPartition]] =
