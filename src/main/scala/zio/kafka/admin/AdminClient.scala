@@ -883,10 +883,22 @@ object AdminClient {
     def apply(ri: JReplicaInfo): ReplicaInfo = ReplicaInfo(ri.size(), ri.offsetLag(), ri.isFuture)
   }
 
-  def make(settings: AdminClientSettings): ZManaged[Any, Throwable, AdminClient] =
-    ZManaged.acquireReleaseWith(
-      ZIO(JAdminClient.create(settings.driverSettings.asJava)).map(ac => LiveAdminClient(ac))
-    )(client => ZIO.succeed(client.adminClient.close(settings.closeTimeout)))
+  def make(settings: AdminClientSettings): TaskManaged[AdminClient] =
+    fromManagedJavaClient(javaClientFromSettings(settings))
+
+  def fromJavaClient(javaClient: JAdminClient): Task[AdminClient] = {
+    ZIO.attemptBlocking( LiveAdminClient(javaClient) )
+  }
+
+  def fromManagedJavaClient(
+    managedJavaClient: TaskManaged[JAdminClient]
+  ): TaskManaged[AdminClient] =
+    managedJavaClient.flatMap { javaClient =>
+      ZManaged.fromZIO(fromJavaClient(javaClient))
+    }
+
+  def javaClientFromSettings(settings: AdminClientSettings): TaskManaged[JAdminClient] =
+    ZManaged.acquireReleaseAttemptWith(JAdminClient.create(settings.driverSettings.asJava))(_.close(settings.closeTimeout))
 
   implicit class MapOps[K1, V1](val v: Map[K1, V1]) extends AnyVal {
     def bimap[K2, V2](fk: K1 => K2, fv: V1 => V2) = v.map(kv => fk(kv._1) -> fv(kv._2))
