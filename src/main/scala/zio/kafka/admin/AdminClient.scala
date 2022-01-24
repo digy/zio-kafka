@@ -1,6 +1,6 @@
 package zio.kafka.admin
 
-import java.util.Optional
+import org.apache.kafka.clients.admin.ListOffsetsResult.{ ListOffsetsResultInfo => JListOffsetsResultInfo }
 import org.apache.kafka.clients.admin.{
   AdminClient => JAdminClient,
   AlterConsumerGroupOffsetsOptions => JAlterConsumerGroupOffsetsOptions,
@@ -9,6 +9,7 @@ import org.apache.kafka.clients.admin.{
   ConsumerGroupListing => JConsumerGroupListing,
   CreatePartitionsOptions => JCreatePartitionsOptions,
   CreateTopicsOptions => JCreateTopicsOptions,
+  DeleteRecordsOptions => JDeleteRecordsOptions,
   DescribeClusterOptions => JDescribeClusterOptions,
   DescribeConfigsOptions => JDescribeConfigsOptions,
   ListConsumerGroupOffsetsOptions => JListConsumerGroupOffsetsOptions,
@@ -24,7 +25,6 @@ import org.apache.kafka.clients.admin.{
   TopicListing => JTopicListing,
   _
 }
-import org.apache.kafka.clients.admin.ListOffsetsResult.{ ListOffsetsResultInfo => JListOffsetsResultInfo }
 import org.apache.kafka.clients.consumer.{ OffsetAndMetadata => JOffsetAndMetadata }
 import org.apache.kafka.common.config.{ ConfigResource => JConfigResource }
 import org.apache.kafka.common.errors.ApiException
@@ -40,6 +40,7 @@ import org.apache.kafka.common.{
 }
 import zio._
 
+import java.util.Optional
 import scala.jdk.CollectionConverters._
 
 trait AdminClient {
@@ -71,6 +72,14 @@ trait AdminClient {
    * Delete a single topic.
    */
   def deleteTopic(topic: String): Task[Unit]
+
+  /**
+   * Delete records.
+   */
+  def deleteRecords(
+    recordsToDelete: Map[TopicPartition, RecordsToDelete],
+    deleteRecordsOptions: Option[DeleteRecordsOptions] = None
+  ): Task[Unit]
 
   /**
    * List the topics in the cluster.
@@ -233,6 +242,23 @@ object AdminClient extends Accessible[AdminClient] {
      */
     override def deleteTopic(topic: String): Task[Unit] =
       deleteTopics(List(topic))
+
+    /**
+     * Delete records.
+     */
+    override def deleteRecords(
+      recordsToDelete: Map[TopicPartition, RecordsToDelete],
+      deleteRecordsOptions: Option[DeleteRecordsOptions] = None
+    ): Task[Unit] = {
+      val records = recordsToDelete.map { case (k, v) => k.asJava -> v }.asJava
+      fromKafkaFutureVoid {
+        ZIO.attemptBlocking(
+          deleteRecordsOptions
+            .fold(adminClient.deleteRecords(records))(opts => adminClient.deleteRecords(records, opts.asJava))
+            .all()
+        )
+      }
+    }
 
     /**
      * List the topics in the cluster.
@@ -802,6 +828,13 @@ object AdminClient extends Accessible[AdminClient] {
 
     case object ReadCommitted extends IsolationLevel {
       override def asJava = JIsolationLevel.READ_COMMITTED
+    }
+  }
+
+  case class DeleteRecordsOptions(timeout: Option[Duration]) {
+    def asJava = {
+      val offsetOpt = new JDeleteRecordsOptions()
+      timeout.fold(offsetOpt)(timeout => offsetOpt.timeoutMs(timeout.toMillis.toInt))
     }
   }
 

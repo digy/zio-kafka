@@ -1,5 +1,6 @@
 package zio.kafka
 
+import org.apache.kafka.clients.admin.RecordsToDelete
 import org.apache.kafka.clients.consumer.ConsumerRecord
 import zio.{ Chunk, Clock, Duration, Schedule, ZIO }
 import org.apache.kafka.common.{ Node => JNode }
@@ -23,6 +24,7 @@ import zio.stream.ZSink
 import zio.test.Assertion._
 import zio.test.TestAspect._
 import zio.test._
+import java.util.UUID
 
 object AdminSpec extends DefaultRunnableSpec {
   override def spec =
@@ -205,6 +207,24 @@ object AdminSpec extends DefaultRunnableSpec {
               equalTo(records(1))
             ) &&
             assert(recordsAfterAltering.get(2))(isNone)
+        }
+      },
+      test("create, produce, delete records from a topic") {
+        KafkaTestUtils.withAdmin { client =>
+          type Env = Kafka with Clock
+          val topicName      = UUID.randomUUID().toString
+          val topicPartition = TopicPartition(topicName, 0)
+
+          for {
+            _             <- client.createTopic(AdminClient.NewTopic(topicName, 1, 1))
+            _             <- produceOne(topicName, "key", "message").provideSomeLayer[Env](producer)
+            offsetsBefore <- client.listOffsets(Map(topicPartition -> OffsetSpec.EarliestSpec))
+            _             <- client.deleteRecords(Map(topicPartition -> RecordsToDelete.beforeOffset(1L)))
+            offsetsAfter  <- client.listOffsets(Map(topicPartition -> OffsetSpec.EarliestSpec))
+            _             <- client.deleteTopic(topicName)
+          } yield assert(offsetsBefore.get(topicPartition).map(_.offset))(isSome(equalTo(0L))) &&
+            assert(offsetsAfter.get(topicPartition).map(_.offset))(isSome(equalTo(1L)))
+
         }
       },
       test("list consumer groups") {
