@@ -82,7 +82,7 @@ private final case class Live(
             if (settings.perPartitionChunkPrefetch <= 0) partition
             else partition.buffer(settings.perPartitionChunkPrefetch)
 
-          tp -> partitionStream.mapChunksM(_.mapM(_.deserializeWith(keyDeserializer, valueDeserializer)))
+          tp -> partitionStream.mapChunksZIO(_.mapZIO(_.deserializeWith(keyDeserializer, valueDeserializer)))
         }
       }
 
@@ -111,7 +111,7 @@ private final case class Live(
     valueDeserializer: Deserializer[V],
     outputBuffer: Int
   ): Stream[Throwable, CommittableRecord[K, V]] =
-    partitionedStream(keyDeserializer, valueDeserializer).flatMapPar(n = Int.MaxValue, outputBuffer = outputBuffer)(
+    partitionedStream(keyDeserializer, valueDeserializer).flatMapPar(n = Int.MaxValue, bufferSize = outputBuffer)(
       _._2
     )
 
@@ -132,20 +132,20 @@ private final case class Live(
     for {
       r <- ZIO.environment[R1]
       _ <- ZStream
-             .fromEffect(subscribe(subscription))
+             .fromZIO(subscribe(subscription))
              .flatMap { _ =>
                partitionedStream(keyDeserializer, valueDeserializer)
-                 .flatMapPar(Int.MaxValue, outputBuffer = settings.perPartitionChunkPrefetch) {
+                 .flatMapPar(Int.MaxValue, bufferSize = settings.perPartitionChunkPrefetch) {
                    case (_, partitionStream) =>
-                     partitionStream.mapChunksM(_.mapM { case CommittableRecord(record, offset) =>
+                     partitionStream.mapChunksZIO(_.mapZIO { case CommittableRecord(record, offset) =>
                        f(record.key(), record.value()).as(offset)
                      })
                  }
              }
-             .provide(r)
+             .provideEnvironment(r)
              .aggregateAsync(offsetBatches)
-             .mapM(_.commitOrRetry(commitRetryPolicy))
-             .provide(Has(clock))
+             .mapZIO(_.commitOrRetry(commitRetryPolicy))
+             .provideEnvironment(ZEnvironment(clock))
              .runDrain
     } yield ()
 
@@ -173,7 +173,7 @@ private final case class Live(
                 settings.offsetRetrieval match {
                   case OffsetRetrieval.Manual(getOffsets) =>
                     getOffsets(topicPartitions).flatMap { offsets =>
-                      ZIO.foreach_(offsets) { case (tp, offset) => ZIO(c.seek(tp, offset)) }
+                      ZIO.foreachDiscard(offsets) { case (tp, offset) => ZIO(c.seek(tp, offset)) }
                     }
                   case OffsetRetrieval.Auto(_) => ZIO.unit
                 }

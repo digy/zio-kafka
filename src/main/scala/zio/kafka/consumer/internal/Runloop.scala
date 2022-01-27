@@ -215,6 +215,7 @@ private[consumer] final class Runloop(
         getOffsets(tps)
           .tap(offsets => ZIO.foreachDiscard(offsets) { case (tp, offset) => ZIO(c.seek(tp, offset)) })
           .when(tps.nonEmpty)
+          .unit
 
       case OffsetRetrieval.Auto(_) =>
         ZIO.unit
@@ -249,7 +250,7 @@ private[consumer] final class Runloop(
       case _: IllegalStateException => ConsumerRecords.empty[Array[Byte], Array[Byte]]()
     }
 
-  private def pauseAllPartitions(c: ByteArrayKafkaConsumer) = ZIO.effectTotal {
+  private def pauseAllPartitions(c: ByteArrayKafkaConsumer) = ZIO.succeed {
     val currentAssigned = c.assignment()
     c.pause(currentAssigned)
   }
@@ -446,8 +447,8 @@ private[consumer] object Runloop {
   ): RManaged[Clock, Runloop] =
     for {
       rebalancingRef <- Ref.make(false).toManaged
-      requestQueue   <- Queue.unbounded[Runloop.Request].toManaged(_.shutdown)
-      commitQueue    <- Queue.unbounded[Command.Commit].toManaged(_.shutdown)
+      requestQueue   <- Queue.unbounded[Runloop.Request].toManagedWith(_.shutdown)
+      commitQueue    <- Queue.unbounded[Command.Commit].toManagedWith(_.shutdown)
       partitions <- Queue
                       .unbounded[
                         Take[Throwable, (TopicPartition, Stream[Throwable, ByteArrayCommittableRecord])]
@@ -462,7 +463,7 @@ private[consumer] object Runloop {
                             )
                           )
                       }
-                      .toManaged(_.shutdown)
+                      .toManagedWith(_.shutdown)
       shutdownRef <- Ref.make(false).toManaged
       runloop = new Runloop(
                   consumer,

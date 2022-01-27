@@ -1,12 +1,9 @@
-package zio.kafka.admin
+package zio.kafka
 
 import org.apache.kafka.clients.consumer.ConsumerRecord
-import zio.{ Chunk, Has, Schedule, ZIO }
-import zio.blocking.Blocking
-import zio.clock.Clock
-import zio.duration.Duration
-import zio.kafka.KafkaTestUtils
+import zio.{ Chunk, Clock, Duration, Schedule, ZIO }
 import zio.kafka.KafkaTestUtils._
+import zio.kafka.admin.{ AclOperation, AdminClient }
 import zio.kafka.admin.AdminClient.{
   ConfigResource,
   ConfigResourceType,
@@ -18,19 +15,18 @@ import zio.kafka.admin.AdminClient.{
   OffsetSpec,
   TopicPartition
 }
-import zio.kafka.consumer.{ Consumer, OffsetBatch, Subscription }
+import zio.kafka.consumer.{ CommittableRecord, Consumer, OffsetBatch, Subscription }
 import zio.kafka.embedded.Kafka
 import zio.kafka.serde.Serde
-import zio.stream.ZTransducer
+import zio.stream.ZSink
 import zio.test.Assertion._
 import zio.test.TestAspect._
 import zio.test._
-import zio.test.environment.TestEnvironment
 
 object AdminSpec extends DefaultRunnableSpec {
   override def spec =
     suite("client admin test")(
-      testM("create, list, delete single topic") {
+      test("create, list, delete single topic") {
         KafkaTestUtils.withAdmin { client =>
           for {
             list1 <- client.listTopics()
@@ -44,7 +40,7 @@ object AdminSpec extends DefaultRunnableSpec {
 
         }
       },
-      testM("create, list, delete multiple topic") {
+      test("create, list, delete multiple topic") {
         KafkaTestUtils.withAdmin { client =>
           for {
             list1 <- client.listTopics()
@@ -61,7 +57,7 @@ object AdminSpec extends DefaultRunnableSpec {
 
         }
       },
-      testM("just list") {
+      test("just list") {
         KafkaTestUtils.withAdmin { client =>
           for {
             list1 <- client.listTopics()
@@ -69,7 +65,7 @@ object AdminSpec extends DefaultRunnableSpec {
 
         }
       },
-      testM("create, describe, delete multiple topic") {
+      test("create, describe, delete multiple topic") {
         KafkaTestUtils.withAdmin { client =>
           for {
             list1 <- client.listTopics()
@@ -83,7 +79,7 @@ object AdminSpec extends DefaultRunnableSpec {
 
         }
       },
-      testM("create, describe topic config, delete multiple topic") {
+      test("create, describe topic config, delete multiple topic") {
         KafkaTestUtils.withAdmin { client =>
           for {
             list1 <- client.listTopics()
@@ -101,35 +97,35 @@ object AdminSpec extends DefaultRunnableSpec {
             assert(list3.size)(equalTo(0))
         }
       },
-      testM("list cluster nodes") {
+      test("list cluster nodes") {
         KafkaTestUtils.withAdmin { client =>
           for {
             nodes <- client.describeClusterNodes()
           } yield assert(nodes.size)(equalTo(1))
         }
       },
-      testM("get cluster controller") {
+      test("get cluster controller") {
         KafkaTestUtils.withAdmin { client =>
           for {
             controller <- client.describeClusterController()
           } yield assert(controller.id)(equalTo(0))
         }
       },
-      testM("get cluster id") {
+      test("get cluster id") {
         KafkaTestUtils.withAdmin { client =>
           for {
             controllerId <- client.describeClusterId()
           } yield assert(controllerId.nonEmpty)(isTrue)
         }
       },
-      testM("get cluster authorized operations") {
+      test("get cluster authorized operations") {
         KafkaTestUtils.withAdmin { client =>
           for {
             operations <- client.describeClusterAuthorizedOperations()
           } yield assert(operations)(equalTo(Set.empty[AclOperation]))
         }
       },
-      testM("describe broker config") {
+      test("describe broker config") {
         KafkaTestUtils.withAdmin { client =>
           for {
             configs <- client.describeConfigs(
@@ -140,7 +136,7 @@ object AdminSpec extends DefaultRunnableSpec {
           } yield assert(configs.size)(equalTo(1))
         }
       },
-      testM("list offsets") {
+      test("list offsets") {
         KafkaTestUtils.withAdmin { client =>
           val topic    = "topic8"
           val msgCount = 20
@@ -155,7 +151,7 @@ object AdminSpec extends DefaultRunnableSpec {
           } yield assert(offsets.values.map(_.offset).sum)(equalTo(msgCount.toLong))
         }
       },
-      testM("alter offsets") {
+      test("alter offsets") {
         KafkaTestUtils.withAdmin { client =>
           val topic            = "topic9"
           val consumerGroupID  = "topic9"
@@ -169,11 +165,11 @@ object AdminSpec extends DefaultRunnableSpec {
           def consumeAndCommit(count: Long) =
             Consumer
               .subscribeAnd(Subscription.Topics(Set(topic)))
-              .partitionedStream[Kafka with Clock, String, String](Serde.string, Serde.string)
+              .partitionedStream[String, String](Serde.string, Serde.string)
               .flatMapPar(partitionCount)(_._2)
               .take(count)
-              .transduce(ZTransducer.collectAllN(Int.MaxValue))
-              .mapConcatM { committableRecords =>
+              .transduce(ZSink.collectAllN[CommittableRecord[String, String]](Int.MaxValue))
+              .mapConcatZIO { committableRecords =>
                 val records = committableRecords.map(_.record)
                 val offsetBatch =
                   committableRecords.foldLeft(OffsetBatch.empty)(_ merge _.offset)
@@ -202,7 +198,7 @@ object AdminSpec extends DefaultRunnableSpec {
                    )
                  )
             expectedMsgsToConsume = endOffsets(p(0)).offset + partitionResetBy
-            recordsAfterAltering <- consumeAndCommit(expectedMsgsToConsume.toLong).map(toMap)
+            recordsAfterAltering <- consumeAndCommit(expectedMsgsToConsume).map(toMap)
           } yield assert(recordsAfterAltering(0))(equalTo(records(0))) &&
             assert(records(1).take(endOffsets(p(1)).offset.toInt - partitionResetBy) ++ recordsAfterAltering(1))(
               equalTo(records(1))
@@ -210,7 +206,7 @@ object AdminSpec extends DefaultRunnableSpec {
             assert(recordsAfterAltering.get(2))(isNone)
         }
       },
-      testM("list consumer groups") {
+      test("list consumer groups") {
         KafkaTestUtils.withAdmin { implicit admin =>
           for {
             topicName <- randomTopic
@@ -222,12 +218,12 @@ object AdminSpec extends DefaultRunnableSpec {
           } yield assert(list)(exists(hasField("groupId", _.groupId, equalTo(groupId))))
         }
       },
-      testM("list consumer group offsets") {
+      test("list consumer group offsets") {
 
         def consumeAndCommit(count: Long, topic: String, groupId: String) =
           Consumer
             .subscribeAnd(Subscription.Topics(Set(topic)))
-            .plainStream[Kafka with Clock, String, String](Serde.string, Serde.string)
+            .plainStream[String, String](Serde.string, Serde.string)
             .take(count)
             .foreach(_.offset.commit)
             .provideSomeLayer[Kafka with Clock](consumer(topic, Some(groupId)))
@@ -270,7 +266,7 @@ object AdminSpec extends DefaultRunnableSpec {
             assert(invalidGroupIdOffsets)(isEmpty)
         }
       },
-      testM("describe consumer groups") {
+      test("describe consumer groups") {
         KafkaTestUtils.withAdmin { implicit admin =>
           for {
             topicName   <- randomTopic
@@ -282,7 +278,7 @@ object AdminSpec extends DefaultRunnableSpec {
           } yield assert(description.groupId)(equalTo(groupId)) && assert(description.members.length)(equalTo(2))
         }
       },
-      testM("remove members from consumer groups") {
+      test("remove members from consumer groups") {
         KafkaTestUtils.withAdmin { implicit admin =>
           for {
             topicName   <- randomTopic
@@ -297,7 +293,7 @@ object AdminSpec extends DefaultRunnableSpec {
           } yield assert(description.groupId)(equalTo(groupId)) && assert(description.members.length)(equalTo(1))
         }
       },
-      testM("describe log dirs") {
+      test("describe log dirs") {
         KafkaTestUtils.withAdmin { implicit admin =>
           for {
             topicName <- randomTopic
@@ -335,7 +331,7 @@ object AdminSpec extends DefaultRunnableSpec {
         (Schedule.recurs(5) && Schedule.fixed(Duration.fromMillis(500)) && Schedule
           .recurUntil[ConsumerGroupDescription](
             _.state == AdminClient.ConsumerGroupState.Stable
-          )).map(_._2)
+          )).map(_._3)
       )
       .flatMap(desc =>
         if (desc.state == AdminClient.ConsumerGroupState.Stable) {

@@ -2,7 +2,6 @@ package zio.kafka.consumer
 
 import org.apache.kafka.clients.consumer.{ OffsetAndMetadata, OffsetAndTimestamp }
 import org.apache.kafka.common.{ Metric, MetricName, PartitionInfo, TopicPartition }
-import zio.ZManaged.unit.merge
 import zio._
 import zio.kafka.serde.Deserializer
 import zio.kafka.consumer.diagnostics.Diagnostics
@@ -131,8 +130,8 @@ trait Consumer {
 
 object Consumer {
 
-  val offsetBatches: Transducer[Nothing, Offset, OffsetBatch] =
-    Transducer.foldLeft[Offset, OffsetBatch](OffsetBatch.empty)(_ merge _)
+  val offsetBatches: ZSink[Any, Nothing, Offset, Nothing, OffsetBatch] =
+    ZSink.foldLeft[Offset, OffsetBatch](OffsetBatch.empty)(_ merge _)
 
   val live: RLayer[Clock with ConsumerSettings with Diagnostics, Consumer] =
     (for {
@@ -161,7 +160,7 @@ object Consumer {
    * Accessor method for [[Consumer.assignment]]
    */
   def assignment: RIO[Consumer, Set[TopicPartition]] =
-    ZIO.serviceWith(_.assignment)
+    ZIO.serviceWithZIO(_.assignment)
 
   /**
    * Accessor method for [[Consumer.beginningOffsets]]
@@ -170,7 +169,7 @@ object Consumer {
     partitions: Set[TopicPartition],
     timeout: Duration = Duration.Infinity
   ): RIO[Consumer, Map[TopicPartition, Long]] =
-    ZIO.serviceWith(_.beginningOffsets(partitions, timeout))
+    ZIO.serviceWithZIO(_.beginningOffsets(partitions, timeout))
 
   /**
    * Accessor method for [[Consumer.committed]]
@@ -179,7 +178,7 @@ object Consumer {
     partitions: Set[TopicPartition],
     timeout: Duration = Duration.Infinity
   ): RIO[Consumer, Map[TopicPartition, Option[OffsetAndMetadata]]] =
-    ZIO.serviceWith(_.committed(partitions, timeout))
+    ZIO.serviceWithZIO(_.committed(partitions, timeout))
 
   /**
    * Accessor method for [[Consumer.endOffsets]]
@@ -188,7 +187,7 @@ object Consumer {
     partitions: Set[TopicPartition],
     timeout: Duration = Duration.Infinity
   ): RIO[Consumer, Map[TopicPartition, Long]] =
-    ZIO.serviceWith(_.endOffsets(partitions, timeout))
+    ZIO.serviceWithZIO(_.endOffsets(partitions, timeout))
 
   /**
    * Accessor method for [[Consumer.listTopics]]
@@ -196,7 +195,7 @@ object Consumer {
   def listTopics(
     timeout: Duration = Duration.Infinity
   ): RIO[Consumer, Map[String, List[PartitionInfo]]] =
-    ZIO.serviceWith(_.listTopics(timeout))
+    ZIO.serviceWithZIO(_.listTopics(timeout))
 
   /**
    * Accessor method for [[Consumer.partitionedStream]]
@@ -209,7 +208,7 @@ object Consumer {
     Throwable,
     (TopicPartition, Stream[Throwable, CommittableRecord[K, V]])
   ] =
-    ZStream.accessStream(_.get[Consumer].partitionedStream(keyDeserializer, valueDeserializer))
+    ZStream.environmentWithStream(_.get[Consumer].partitionedStream(keyDeserializer, valueDeserializer))
 
   /**
    * Accessor method for [[Consumer.plainStream]]
@@ -219,13 +218,13 @@ object Consumer {
     valueDeserializer: Deserializer[V],
     outputBuffer: Int = 4
   ): ZStream[Consumer, Throwable, CommittableRecord[K, V]] =
-    ZStream.accessStream(_.get[Consumer].plainStream(keyDeserializer, valueDeserializer, outputBuffer))
+    ZStream.environmentWithStream(_.get[Consumer].plainStream(keyDeserializer, valueDeserializer, outputBuffer))
 
   /**
    * Accessor method for [[Consumer.stopConsumption]]
    */
   def stopConsumption: RIO[Consumer, Unit] =
-    ZIO.serviceWith(_.stopConsumption)
+    ZIO.serviceWithZIO(_.stopConsumption)
 
   /**
    * Execute an effect for each record and commit the offset after processing
@@ -295,13 +294,13 @@ object Consumer {
    * Accessor method for [[Consumer.subscribe]]
    */
   def subscribe(subscription: Subscription): RIO[Consumer, Unit] =
-    ZIO.serviceWith(_.subscribe(subscription))
+    ZIO.serviceWithZIO(_.subscribe(subscription))
 
   /**
    * Accessor method for [[Consumer.unsubscribe]]
    */
   def unsubscribe: RIO[Consumer, Unit] =
-    ZIO.serviceWith(_.unsubscribe)
+    ZIO.serviceWithZIO(_.unsubscribe)
 
   /**
    * Accessor method for [[Consumer.offsetsForTimes]]
@@ -310,7 +309,7 @@ object Consumer {
     timestamps: Map[TopicPartition, Long],
     timeout: Duration = Duration.Infinity
   ): RIO[Consumer, Map[TopicPartition, OffsetAndTimestamp]] =
-    ZIO.serviceWith(_.offsetsForTimes(timestamps, timeout))
+    ZIO.serviceWithZIO(_.offsetsForTimes(timestamps, timeout))
 
   /**
    * Accessor method for [[Consumer.partitionsFor]]
@@ -319,7 +318,7 @@ object Consumer {
     topic: String,
     timeout: Duration = Duration.Infinity
   ): RIO[Consumer, List[PartitionInfo]] =
-    ZIO.serviceWith(_.partitionsFor(topic, timeout))
+    ZIO.serviceWithZIO(_.partitionsFor(topic, timeout))
 
   /**
    * Accessor method for [[Consumer.position]]
@@ -328,7 +327,7 @@ object Consumer {
     partition: TopicPartition,
     timeout: Duration = Duration.Infinity
   ): RIO[Consumer, Long] =
-    ZIO.serviceWith(_.position(partition, timeout))
+    ZIO.serviceWithZIO(_.position(partition, timeout))
 
   /**
    * Accessor method for [[Consumer.subscribeAnd]]
@@ -337,7 +336,7 @@ object Consumer {
     subscription: Subscription
   ): SubscribedConsumerFromEnvironment =
     new SubscribedConsumerFromEnvironment(
-      ZIO.accessM { env =>
+      ZIO.environmentWithZIO { env =>
         val consumer = env.get[Consumer]
         consumer.subscribe(subscription).as(consumer)
       }
@@ -347,12 +346,12 @@ object Consumer {
    * Accessor method for [[Consumer.subscription]]
    */
   def subscription: RIO[Consumer, Set[String]] =
-    ZIO.serviceWith(_.subscription)
+    ZIO.serviceWithZIO(_.subscription)
 
   /**
    * Accessor method for [[Consumer.metrics]]
    */
   def metrics: RIO[Consumer, Map[MetricName, Metric]] =
-    ZIO.serviceWith(_.metrics)
+    ZIO.serviceWithZIO(_.metrics)
 
 }

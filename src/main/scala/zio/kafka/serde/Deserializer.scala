@@ -20,7 +20,7 @@ trait Deserializer[+T] {
    * Returns a new deserializer that executes its deserialization function on the blocking threadpool.
    */
   def blocking: Deserializer[T] =
-    Deserializer((topic, headers, data) => ZIO.attemptBlocking(deserialize(topic, headers, data)))
+    Deserializer((topic, headers, data) => ZIO.blocking(deserialize(topic, headers, data)))
 
   /**
    * Create a deserializer for a type U based on the deserializer for type T and a mapping function

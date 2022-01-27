@@ -23,14 +23,14 @@ trait Serializer[-T] {
   /**
    * Create a serializer for a type U based on the serializer for type T and an effectful mapping function
    */
-  def contramapM[U](f: U => Task[T]): Serializer[U] =
+  def contramapZIO[U](f: U => Task[T]): Serializer[U] =
     Serializer((topic, headers, u) => f(u).flatMap(serialize(topic, headers, _)))
 
   /**
    * Returns a new serializer that executes its serialization function on the blocking threadpool.
    */
   def blocking: Serializer[T] =
-    Serializer((topic, headers, t) => ZIO.attemptBlocking(serialize(topic, headers, t)))
+    Serializer((topic, headers, t) => ZIO.blocking(serialize(topic, headers, t)))
 
   /**
    * Returns a new serializer that handles optional values and serializes them as nulls.

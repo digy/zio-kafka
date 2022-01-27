@@ -1,13 +1,12 @@
 package zio.kafka.producer
 
 import java.util.concurrent.atomic.AtomicLong
-
 import org.apache.kafka.clients.producer.{ Callback, KafkaProducer, ProducerRecord, RecordMetadata }
 import org.apache.kafka.common.{ Metric, MetricName }
 import org.apache.kafka.common.serialization.ByteArraySerializer
 import zio._
 import zio.kafka.serde.Serializer
-import zio.stream.ZTransducer
+import zio.stream.ZPipeline
 
 import scala.jdk.CollectionConverters._
 
@@ -41,11 +40,10 @@ trait Producer {
   def produceAll[K, V](
     keySerializer: Serializer[K],
     valueSerializer: Serializer[V]
-  ): ZTransducer[Any, Throwable, ProducerRecord[K, V], RecordMetadata] =
-    ZTransducer.fromPush {
-      case None        => UIO.succeed(Chunk.empty)
-      case Some(chunk) => produceChunk(chunk, keySerializer, valueSerializer)
-    }
+  ): ZPipeline[Any, Throwable, ProducerRecord[K, V], RecordMetadata] =
+    ZPipeline.mapChunksZIO(
+      produceChunk(_, keySerializer, valueSerializer)
+    )
 
   /**
    * Produces a single record. The effect returned from this method has two layers and describes the completion of two
@@ -255,7 +253,7 @@ object Producer {
                          new ByteArraySerializer()
                        )
                      )
-    } yield Live(rawProducer, settings)).toManaged(_.close)
+    } yield Live(rawProducer, settings)).toManagedWith(_.close)
 
   def withProducerService[R, A](
     r: Producer => RIO[R, A]
@@ -290,12 +288,10 @@ object Producer {
   def produceAll[K, V](
     keySerializer: Serializer[K],
     valueSerializer: Serializer[V]
-  ): ZTransducer[Producer, Throwable, ProducerRecord[K, V], RecordMetadata] =
-    ZTransducer.fromPush {
-      case None => UIO.succeed(Chunk.empty)
-      case Some(chunk) =>
-        produceChunk[K, V](chunk, keySerializer, valueSerializer)
-    }
+  ): ZPipeline[Producer, Throwable, ProducerRecord[K, V], RecordMetadata] =
+    ZPipeline.mapChunksZIO(
+      produceChunk[K, V](_, keySerializer, valueSerializer)
+    )
 
   /**
    * Accessor method for [[Producer!.produceAsync[R,K,V](record*]]
@@ -343,11 +339,11 @@ object Producer {
    * Accessor method for [[Producer.flush]]
    */
   val flush: RIO[Producer, Unit] =
-    ZIO.serviceWith(_.flush)
+    ZIO.serviceWithZIO(_.flush)
 
   /**
    * Accessor method for [[Producer.metrics]]
    */
   val metrics: RIO[Producer, Map[MetricName, Metric]] =
-    ZIO.serviceWith(_.metrics)
+    ZIO.serviceWithZIO(_.metrics)
 }
