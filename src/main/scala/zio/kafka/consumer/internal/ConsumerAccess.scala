@@ -22,7 +22,8 @@ private[consumer] class ConsumerAccess(
   private[consumer] def withConsumerNoPermit[R, A](
     f: ByteArrayKafkaConsumer => RIO[R, A]
   ): RIO[R, A] =
-    blocking
+    //ZIO.blocking
+    ZIO
       .blocking(ZIO.suspend(f(consumer)))
       .catchSome { case _: WakeupException =>
         ZIO.interrupt
@@ -43,6 +44,6 @@ private[consumer] object ConsumerAccess {
                       new ByteArrayDeserializer(),
                       new ByteArrayDeserializer()
                     )
-                  }.toManaged(c => blocking.blocking(access.withPermit(UIO(c.close(settings.closeTimeout)))))
-    } yield new ConsumerAccess(consumer, access, blocking)
+                  }.toManagedWith(c => ZIO.blocking(access.withPermit(UIO(c.close(settings.closeTimeout)))))
+    } yield new ConsumerAccess(consumer, access)
 }

@@ -1,13 +1,12 @@
 package zio.kafka.producer
 
 import java.util.concurrent.atomic.AtomicLong
-
 import org.apache.kafka.clients.producer.{ Callback, KafkaProducer, ProducerRecord, RecordMetadata }
 import org.apache.kafka.common.{ Metric, MetricName }
 import org.apache.kafka.common.serialization.ByteArraySerializer
 import zio._
 import zio.kafka.serde.Serializer
-import zio.stream.ZTransducer
+import zio.stream.ZPipeline
 
 import scala.jdk.CollectionConverters._
 
@@ -41,8 +40,8 @@ trait Producer {
   def produceAll[K, V](
     keySerializer: Serializer[K],
     valueSerializer: Serializer[V]
-  ): ZTransducer[Any, Throwable, ProducerRecord[K, V], RecordMetadata] =
-    ZTransducer.fromPush {
+  ): ZPipeline[Any, Throwable, ProducerRecord[K, V], RecordMetadata] =
+    ZPipeline.fromPush {
       case None        => UIO.succeed(Chunk.empty)
       case Some(chunk) => produceChunk(chunk, keySerializer, valueSerializer)
     }
@@ -255,7 +254,7 @@ object Producer {
                          new ByteArraySerializer()
                        )
                      )
-    } yield Live(rawProducer, settings)).toManaged(_.close)
+    } yield Live(rawProducer, settings)).toManagedWith(_.close)
 
   def withProducerService[R, A](
     r: Producer => RIO[R, A]
@@ -290,8 +289,8 @@ object Producer {
   def produceAll[K, V](
     keySerializer: Serializer[K],
     valueSerializer: Serializer[V]
-  ): ZTransducer[Producer, Throwable, ProducerRecord[K, V], RecordMetadata] =
-    ZTransducer.fromPush {
+  ): ZPipeline[Producer, Throwable, ProducerRecord[K, V], RecordMetadata] =
+    ZPipeline.fromPush {
       case None => UIO.succeed(Chunk.empty)
       case Some(chunk) =>
         produceChunk[K, V](chunk, keySerializer, valueSerializer)
@@ -343,11 +342,11 @@ object Producer {
    * Accessor method for [[Producer.flush]]
    */
   val flush: RIO[Producer, Unit] =
-    ZIO.serviceWith(_.flush)
+    ZIO.serviceWithZIO(_.flush)
 
   /**
    * Accessor method for [[Producer.metrics]]
    */
   val metrics: RIO[Producer, Map[MetricName, Metric]] =
-    ZIO.serviceWith(_.metrics)
+    ZIO.serviceWithZIO(_.metrics)
 }

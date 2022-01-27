@@ -111,7 +111,7 @@ private final case class Live(
     valueDeserializer: Deserializer[V],
     outputBuffer: Int
   ): Stream[Throwable, CommittableRecord[K, V]] =
-    partitionedStream(keyDeserializer, valueDeserializer).flatMapPar(n = Int.MaxValue, outputBuffer = outputBuffer)(
+    partitionedStream(keyDeserializer, valueDeserializer).flatMapPar(n = Int.MaxValue, bufferSize = outputBuffer)(
       _._2
     )
 
@@ -132,20 +132,20 @@ private final case class Live(
     for {
       r <- ZIO.environment[R1]
       _ <- ZStream
-             .fromEffect(subscribe(subscription))
+             .fromZIO(subscribe(subscription))
              .flatMap { _ =>
                partitionedStream(keyDeserializer, valueDeserializer)
-                 .flatMapPar(Int.MaxValue, outputBuffer = settings.perPartitionChunkPrefetch) {
+                 .flatMapPar(Int.MaxValue, bufferSize = settings.perPartitionChunkPrefetch) {
                    case (_, partitionStream) =>
-                     partitionStream.mapChunksM(_.mapM { case CommittableRecord(record, offset) =>
+                     partitionStream.mapChunksZIO(_.mapZIO { case CommittableRecord(record, offset) =>
                        f(record.key(), record.value()).as(offset)
                      })
                  }
              }
-             .provide(r)
+             .provideEnvironment(r)
              .aggregateAsync(offsetBatches)
              .mapM(_.commitOrRetry(commitRetryPolicy))
-             .provide(Has(clock))
+             .provideEnvironment(ZEnvironment(clock))
              .runDrain
     } yield ()
 

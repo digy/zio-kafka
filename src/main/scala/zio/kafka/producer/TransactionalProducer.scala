@@ -45,8 +45,8 @@ object TransactionalProducer {
       case Exit.Success(_) =>
         transaction.offsetBatchRef.get
           .flatMap(offsetBatch => commitTransactionWithOffsets(offsetBatch).retryN(5).orDie)
-      case Exit.Failure(Fail(UserInitiatedAbort)) => abortTransaction.retryN(5).orDie
-      case Exit.Failure(_)                        => abortTransaction.retryN(5).orDie
+      case Exit.Failure(Fail(UserInitiatedAbort, _)) => abortTransaction.retryN(5).orDie
+      case Exit.Failure(_)                           => abortTransaction.retryN(5).orDie
     }
 
     def createTransaction: ZManaged[Any, Throwable, Transaction] =
@@ -83,5 +83,5 @@ object TransactionalProducer {
       _         <- ZIO.attemptBlocking(rawProducer.initTransactions())
       semaphore <- Semaphore.make(1)
       live = Producer.Live(rawProducer, settings.producerSettings)
-    } yield LiveTransactionalProducer(live, semaphore)).toManaged(_.live.close)
+    } yield LiveTransactionalProducer(live, semaphore)).toManagedWith(_.live.close)
 }
