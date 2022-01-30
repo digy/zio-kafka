@@ -26,7 +26,8 @@ private[consumer] final class Runloop(
   diagnostics: Diagnostics,
   shutdownRef: Ref[Boolean],
   offsetRetrieval: OffsetRetrieval,
-  userRebalanceListener: RebalanceListener
+  userRebalanceListener: RebalanceListener,
+  subscribedRef: Ref[Boolean]
 ) {
   private val isRebalancing = rebalancingRef.get
   private val isShutdown    = shutdownRef.get
@@ -65,6 +66,10 @@ private[consumer] final class Runloop(
 
     trackRebalancing ++ emitDiagnostics ++ userRebalanceListener
   }
+
+  def markSubscribed: UIO[Unit] = subscribedRef.set(true)
+
+  def markUnsubscribed: UIO[Unit] = subscribedRef.set(false)
 
   private def commit(offsets: Map[TopicPartition, Long]): Task[Unit] =
     for {
@@ -236,21 +241,15 @@ private[consumer] final class Runloop(
     if (toPause.nonEmpty) c.pause(toPause.asJava)
   }
 
-  private def doPoll(c: ByteArrayKafkaConsumer, requestedPartitions: Set[TopicPartition]) =
-    try {
-      val pollTimeout =
-        if (requestedPartitions.nonEmpty) this.pollTimeout.asJava
-        else 0.millis.asJava
+  private def doPoll(c: ByteArrayKafkaConsumer, requestedPartitions: Set[TopicPartition]) = {
+    val pollTimeout =
+      if (requestedPartitions.nonEmpty) this.pollTimeout.asJava
+      else 0.millis.asJava
 
-      val records = c.poll(pollTimeout)
+    val records = c.poll(pollTimeout)
 
-      if (records eq null) ConsumerRecords.empty[Array[Byte], Array[Byte]]() else records
-    } catch {
-      // The consumer will throw an IllegalStateException if no call to subscribe
-      // has been made yet, so we just ignore that. We have to poll even if c.subscription()
-      // is empty because pattern subscriptions start out as empty.
-      case _: IllegalStateException => ConsumerRecords.empty[Array[Byte], Array[Byte]]()
-    }
+    if (records eq null) ConsumerRecords.empty[Array[Byte], Array[Byte]]() else records
+  }
 
   private def pauseAllPartitions(c: ByteArrayKafkaConsumer) = ZIO.succeed {
     val currentAssigned = c.assignment()
@@ -384,7 +383,8 @@ private[consumer] final class Runloop(
   private def handleOperational(state: State, cmd: Command): Task[State] =
     cmd match {
       case Command.Poll() =>
-        handlePoll(state)
+        // The consumer will throw an IllegalStateException if no call to subscribe
+        ZIO.ifZIO(subscribedRef.get)(handlePoll(state), UIO(state))
       case Command.Requests(reqs) =>
         handleRequests(state, reqs).flatMap { state =>
           // Optimization: eagerly poll if we have pending requests instead of waiting
@@ -468,6 +468,7 @@ private[consumer] object Runloop {
                       }
                       .toManagedWith(_.shutdown)
       shutdownRef <- Ref.make(false).toManaged
+      subscribedRef <- Ref.make(false).toManaged
       runloop = new Runloop(
                   consumer,
                   pollFrequency,
@@ -479,7 +480,8 @@ private[consumer] object Runloop {
                   diagnostics,
                   shutdownRef,
                   offsetRetrieval,
-                  userRebalanceListener
+                  userRebalanceListener,
+                  subscribedRef
                 )
       _ <- runloop.run
     } yield runloop
