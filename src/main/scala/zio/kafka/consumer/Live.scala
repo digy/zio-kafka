@@ -182,10 +182,10 @@ private final case class Live(
               }
         }
       }
-    }
+    } *> runloop.markSubscribed
 
   override def unsubscribe: Task[Unit] =
-    consumer.withConsumer(_.unsubscribe())
+    runloop.markUnsubscribed *> consumer.withConsumer(_.unsubscribe())
 
   override def metrics: Task[Map[MetricName, Metric]] =
     consumer.withConsumer(_.metrics().asScala.toMap)

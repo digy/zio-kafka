@@ -5,19 +5,9 @@ import org.apache.kafka.clients.consumer.ConsumerRecord
 import zio.{ Chunk, Clock, Duration, Schedule, ZIO }
 import org.apache.kafka.common.{ Node => JNode }
 import zio.kafka.KafkaTestUtils._
-import zio.kafka.admin.{ AclOperation, AdminClient }
-import zio.kafka.admin.AdminClient.{
-  ConfigResource,
-  ConfigResourceType,
-  ConsumerGroupDescription,
-  ConsumerGroupState,
-  ListConsumerGroupOffsetsOptions,
-  ListConsumerGroupsOptions,
-  OffsetAndMetadata,
-  OffsetSpec,
-  TopicPartition
-}
-import zio.kafka.consumer.{ CommittableRecord, Consumer, OffsetBatch, Subscription }
+import zio.kafka.admin.{AclOperation, AdminClient}
+import zio.kafka.admin.AdminClient.{ConfigResource, ConfigResourceType, ConsumerGroupDescription, ConsumerGroupState, ListConsumerGroupOffsetsOptions, ListConsumerGroupsOptions, OffsetAndMetadata, OffsetSpec, TopicPartition}
+import zio.kafka.consumer.{CommittableRecord, Consumer, OffsetBatch, Subscription}
 import zio.kafka.embedded.Kafka
 import zio.kafka.serde.Serde
 import zio.stream.ZSink
