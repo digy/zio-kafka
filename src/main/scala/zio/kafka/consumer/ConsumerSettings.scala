@@ -1,7 +1,7 @@
 package zio.kafka.consumer
 
 import org.apache.kafka.clients.consumer.ConsumerConfig
-import zio.duration._
+import zio._
 import zio.kafka.consumer.Consumer.OffsetRetrieval
 
 final case class ConsumerSettings(

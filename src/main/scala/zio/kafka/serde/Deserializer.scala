@@ -3,11 +3,9 @@ package zio.kafka.serde
 import org.apache.kafka.common.header.Headers
 import org.apache.kafka.common.serialization.{ Deserializer => KafkaDeserializer }
 import zio.{ RIO, Task, ZIO }
-import zio.blocking.{ blocking => zioBlocking, Blocking }
 
 import scala.util.{ Failure, Success, Try }
 import scala.jdk.CollectionConverters._
-import scala.annotation.nowarn
 
 /**
  * Deserializer from byte array to a value of some type T
@@ -23,8 +21,8 @@ trait Deserializer[-R, +T] {
   /**
    * Returns a new deserializer that executes its deserialization function on the blocking threadpool.
    */
-  def blocking: Deserializer[R with Blocking, T] =
-    Deserializer((topic, headers, data) => zioBlocking(deserialize(topic, headers, data)))
+  def blocking: Deserializer[R, T] =
+    Deserializer((topic, headers, data) => ZIO.blocking(deserialize(topic, headers, data)))
 
   /**
    * Create a deserializer for a type U based on the deserializer for type T and a mapping function
@@ -57,7 +55,7 @@ trait Deserializer[-R, +T] {
   /**
    * Returns a new deserializer that deserializes values as Option values, mapping null data to None values.
    */
-  def asOption(implicit @nowarn ev: T <:< AnyRef): Deserializer[R, Option[T]] =
+  def asOption(implicit ev: T <:< AnyRef): Deserializer[R, Option[T]] =
     Deserializer((topic, headers, data) => ZIO.foreach(Option(data))(deserialize(topic, headers, _)))
 }
 

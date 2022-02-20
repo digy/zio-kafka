@@ -2,8 +2,7 @@ package zio.kafka.consumer
 
 import org.apache.kafka.clients.consumer.ConsumerGroupMetadata
 import org.apache.kafka.common.TopicPartition
-import zio.{ RIO, Schedule, Task }
-import zio.clock.Clock
+import zio.{ Clock, RIO, Schedule, Task }
 
 sealed trait OffsetBatch {
   def offsets: Map[TopicPartition, Long]
